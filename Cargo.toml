@@ -1,0 +1,29 @@
+[package]
+name = "chase"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+
+[dependencies]
+env_logger = "0.11.3"
+libc = "0.2.153"
+log = "0.4.21"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
+solana-client = "1.18.8"
+solana-sdk = "1.18.9"
+solana-transaction-status = "1.18.9"
+tokio = { version = "1.37.0", features = ["full"] }
+reqwest = "0.11.27"
+futures = "0.3.30"
+time = "0.3.34"
+mio = "0.8.11"
+chrono = "0.4.38"
+solana-rpc-client-api = "1.18.12"
+fern = "0.6.2"
+solana-pubsub-client = "1.18.12"
+
+[profile.release]
+opt-level = "z"  # Maximum optimization
+lto = true       # Enable Link Time Optimization (LTO)
+debug = false    # Strip debug symbols
