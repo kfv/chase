@@ -95,7 +95,6 @@ pub async fn watch() {
     let (mut slot, unsub) = pubsub_client.slot_subscribe().await.unwrap();
 
     while let Some(response) = slot.next().await {
-        println!("Slot {} received!", response.slot);
         let client = Arc::clone(&client);
         let tokens = tokens.clone();
         let wallets = wallets.clone();
