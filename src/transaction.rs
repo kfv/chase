@@ -202,7 +202,6 @@ pub async fn get_block(
             Err(e) => match e.kind {
                 ErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
                     if code == -32004 {
-                        println!("32004");
                         warn!("{} (try: {})", e, retries);
                         retries += 1;
                         if retries > 50 {
@@ -216,8 +215,7 @@ pub async fn get_block(
                     }
                 }
                 _ => {
-                    println!("Unknown error");
-                    error!("{} ({})", e, slot);
+                    error!("Uncaught error: {} ({})", e, slot);
                     return;
                 }
             },
