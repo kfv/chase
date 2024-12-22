@@ -1,6 +1,7 @@
 use std::env;
 use std::error::Error;
 use std::fs;
+use log::error;
 
 pub struct Config {
     pub sol_rpc_endpoint: String,
@@ -30,7 +31,7 @@ impl Config {
 
 pub fn setup_logging() -> Result<(), fern::InitError> {
     if let Err(e) = fs::create_dir_all("/var/log/chase/") {
-        eprintln!("Error creating log directory: {}", e);
+        error!("Error creating log directory: {}", e);
     }
 
     let log_file = fs::File::create("/var/log/chase/application.log")?;
