@@ -23,6 +23,7 @@ solana-rpc-client-api = "1.18.12"
 fern = "0.6.2"
 solana-pubsub-client = "1.18.12"
 spl-token = "4.0.0"
+clap = { version = "4.5.1", features = ["derive"] }
 
 [profile.release]
 opt-level = "z"  # Maximum optimization

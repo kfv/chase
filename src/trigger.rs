@@ -3,7 +3,7 @@ use log::{error, info};
 use reqwest::StatusCode;
 use tokio::time::{sleep, Duration};
 
-pub async fn trigger_api(msg: Vec<ParsedTransaction>, endpoint: String) {
+pub async fn trigger_api(msg: Vec<ParsedTransaction>, endpoint: String, api_token: String) {
     let client = reqwest::Client::new();
     let max_retries = 5;
 
@@ -20,6 +20,7 @@ pub async fn trigger_api(msg: Vec<ParsedTransaction>, endpoint: String) {
             match client
                 .post(&endpoint)
                 .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", api_token))
                 .body(data.clone())
                 .send()
                 .await

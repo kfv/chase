@@ -1,5 +1,5 @@
 # Use the official Rust image as the base
-FROM rust:1.76-slim AS builder
+FROM rust:latest AS builder
 
 # Install libssl-dev
 RUN apt-get update && apt-get install -y pkg-config libssl-dev
@@ -30,6 +30,7 @@ ENV WALLETS_FILE="/app/config/wallets.json"
 
 # Environment variables for runtime
 ENV TRIGGER_ENDPOINT=""
+ENV TRIGGER_API_TOKEN=""
 ENV SOL_RPC_ENDPOINT=""
 ENV SOL_WSS_ENDPOINT=""
 

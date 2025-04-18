@@ -37,45 +37,74 @@ struct Wallets(Vec<String>);
 
 #[derive(Debug, Serialize)]
 pub struct ParsedTransaction {
-    #[serde(rename = "network_id")]
-    network: String,
-    blocktime: String,
+    #[serde(rename = "txHash")]
+    tx_hash: String,
     #[serde(rename = "wallet")]
-    destination: String,
-    #[serde(rename = "currency_id")]
-    token: String,
-    #[serde(rename = "currency_address")]
-    mint: String,
+    wallet_address: String,
+    #[serde(rename = "fromAddress")]
+    from_address: String,
     amount: String,
-    #[serde(rename = "tx_hash")]
-    signature: String,
-    success: bool,
+    #[serde(rename = "currencyId")]
+    currency_id: String,
+    #[serde(rename = "networkId")]
+    network_name: String,
+    time: String,
+    #[serde(rename = "depositToken")]
+    token: String,
 }
 
 impl ParsedTransaction {
     fn new(
-        blocktime: String,
-        destination: String,
-        token: String,
-        mint: String,
+        tx_hash: String,
+        wallet_address: String,
+        from_address: String,
         amount: String,
-        signature: String,
-        success: bool,
+        currency_id: String,
+        network_name: String,
+        time: String,
+        token: String,
     ) -> Self {
         Self {
-            network: "SOL".to_string(),
-            blocktime,
-            destination,
-            token,
-            mint,
+            tx_hash,
+            wallet_address,
+            from_address,
             amount,
-            signature,
-            success,
+            currency_id,
+            network_name,
+            time,
+            token,
         }
     }
 }
 
-pub async fn watch() {
+pub async fn process_slot(slot: u64, dry_run: bool) {
+    let app_config = Config::new().expect("Failed to load configuration");
+    let client = Arc::new(RpcClient::new(app_config.sol_rpc_endpoint.clone()));
+    let config = RpcBlockConfig {
+        encoding: Some(UiTransactionEncoding::JsonParsed),
+        transaction_details: Some(TransactionDetails::Full),
+        rewards: Some(true),
+        commitment: Some(CommitmentConfig::finalized()),
+        max_supported_transaction_version: Some(0),
+    };
+
+    let tokens = load_tokens(app_config.tokens_file.as_str());
+    let wallets = load_wallets(app_config.wallets_file.as_str());
+
+    get_block(
+        &client,
+        slot,
+        &config,
+        &tokens,
+        &wallets,
+        app_config.trigger_endpoint,
+        app_config.trigger_api_token,
+        dry_run,
+    )
+    .await;
+}
+
+pub async fn watch(dry_run: bool) {
     let app_config = Config::new().expect("Failed to load configuration");
 
     let client = Arc::new(RpcClient::new(app_config.sol_rpc_endpoint.clone()));
@@ -100,6 +129,7 @@ pub async fn watch() {
         let tokens = tokens.clone();
         let wallets = wallets.clone();
         let trigger_endpoint = app_config.trigger_endpoint.clone();
+        let trigger_api_token = app_config.trigger_api_token.clone();
 
         get_block(
             &client,
@@ -108,6 +138,8 @@ pub async fn watch() {
             &tokens,
             &wallets,
             trigger_endpoint,
+            trigger_api_token,
+            dry_run,
         )
         .await;
     }
@@ -122,6 +154,8 @@ pub async fn get_block(
     tokens: &HashMap<String, String>,
     wallets: &HashMap<String, bool>,
     trigger_endpoint: String,
+    trigger_api_token: String,
+    dry_run: bool,
 ) {
     let mut retries = 0;
     info!("Starting to process block {}", slot);
@@ -137,7 +171,6 @@ pub async fn get_block(
     
     if slot < current_slot - 100500 {
         warn!("Block {} is too old (current slot: {}). Most RPC nodes only maintain recent blocks.", slot, current_slot);
-        return;
     }
 
     async fn parse_instructions(
@@ -147,12 +180,13 @@ pub async fn get_block(
         wallets: &HashMap<String, bool>,
         tokens: &HashMap<String, String>,
         tx_signatures: &[String],
+        trigger_api_token: &str,
         tx_parsed_result: &mut Vec<ParsedTransaction>,
     ) {
         for instruction in instructions {
             if let UiInstruction::Parsed(UiParsedInstruction::Parsed(parsed_instruction)) = instruction {
                 let obj = parsed_instruction.parsed;
-                parse_tx(&obj, meta, timestamp, wallets, tokens, tx_signatures, tx_parsed_result);
+                parse_tx(&obj, meta, timestamp, wallets, tokens, tx_signatures, trigger_api_token, tx_parsed_result);
             }
         }
     }
@@ -179,7 +213,16 @@ pub async fn get_block(
 
                     if let EncodedTransaction::Json(x) = &transaction.transaction {
                         if let solana_transaction_status::UiMessage::Parsed(p) = &x.message {
-                            parse_instructions(p.instructions.clone(), &meta_ref, timestamp, wallets, tokens, &tx_signatures, &mut tx_parsed_result).await;
+                            parse_instructions(
+                                p.instructions.clone(),
+                                &meta_ref,
+                                timestamp,
+                                wallets,
+                                tokens,
+                                &tx_signatures,
+                                &trigger_api_token,
+                                &mut tx_parsed_result,
+                            ).await;
                         }
                     };
                     
@@ -187,7 +230,16 @@ pub async fn get_block(
                         let meta_tx: Option<Vec<solana_transaction_status::UiInnerInstructions>> = meta.inner_instructions.clone().into();
                         if let Some(inner_instructions) = meta_tx {
                             for inner_instruction in inner_instructions {
-                                parse_instructions(inner_instruction.instructions.clone(), &meta_ref, timestamp, wallets, tokens, &tx_signatures, &mut tx_parsed_result).await;
+                                parse_instructions(
+                                    inner_instruction.instructions.clone(),
+                                    &meta_ref,
+                                    timestamp,
+                                    wallets,
+                                    tokens,
+                                    &tx_signatures,
+                                    &trigger_api_token,
+                                    &mut tx_parsed_result,
+                                ).await;
                             }
                         }
                     }
@@ -195,7 +247,7 @@ pub async fn get_block(
 
                 let signatures: Vec<Signature> = tx_parsed_result
                     .iter()
-                    .filter_map(|s| Signature::from_str(s.signature.as_str()).ok())
+                    .filter_map(|s| Signature::from_str(s.tx_hash.as_str()).ok())
                     .collect();
                 
                 let statuses = match client
@@ -209,17 +261,25 @@ pub async fn get_block(
                     }
                 };
                 
-                for (s, status) in tx_parsed_result.iter_mut().zip(statuses) {
-                    match status.unwrap().status {
-                        Ok(()) => s.success = true,
-                        Err(_) => s.success = false,
-                    }
-                }
-
                 info!("Successfully parsed block {}", slot);
                 if !tx_parsed_result.is_empty() {
                     info!("Transaction Received ({}):\n{:#?}", slot, &tx_parsed_result);
-                    trigger_api(tx_parsed_result, trigger_endpoint).await;
+                    if dry_run {
+                        for tx in &tx_parsed_result {
+                            if let Ok(json) = serde_json::to_string_pretty(tx) {
+                                println!("Curl command to test:");
+                                println!("curl -X POST \\");
+                                println!("  -H 'Content-Type: application/json' \\");
+                                println!("  -H 'Authorization: Bearer {}' \\", trigger_api_token);
+                                println!("  -d '{}' \\", json);
+                                println!("  {}", trigger_endpoint);
+                                println!("\nJSON payload:");
+                                println!("{}", json);
+                            }
+                        }
+                    } else {
+                        trigger_api(tx_parsed_result, trigger_endpoint, trigger_api_token).await;
+                    }
                 }
             }
             Err(e) => {
@@ -274,6 +334,7 @@ fn parse_tx(
     wallets: &HashMap<String, bool>,
     tokens: &HashMap<String, String>,
     tx_signatures: &[String],
+    trigger_api_token: &str,
     res: &mut Vec<ParsedTransaction>,
 ) {
     let mut is_wallet_found = false;
@@ -281,6 +342,7 @@ fn parse_tx(
     let mut tx_amount = Value::Null;
     let mut tx_token = String::new();
     let mut tx_mint = Value::Null;
+    let mut from_address = String::new();
     
     let tx_blocktime = DateTime::from_timestamp(timestamp, 0)
         .unwrap_or_default()
@@ -295,6 +357,10 @@ fn parse_tx(
                 tx_mint = json!(mint);
                 if let Some(token_amount) = info.get("tokenAmount").and_then(|t| t.get("uiAmount")) {
                     tx_amount = token_amount.clone();
+                }
+                // Get the source account for token transfers
+                if let Some(source) = info.get("source").and_then(|s| s.as_str()) {
+                    from_address = source.to_string();
                 }
             }
         }
@@ -367,6 +433,10 @@ fn parse_tx(
         if wallets.contains_key(&tx_destination) {
             is_wallet_found = true;
             target_wallet = tx_destination;
+            // Get the source account for SOL transfers
+            if let Some(source) = obj.get("info").and_then(|data| data.get("source")).and_then(|s| s.as_str()) {
+                from_address = source.to_string();
+            }
         } else {
             // If not, check if it's a token account owned by one of our wallets
             if let Some(account_keys) = meta.get("accountKeys").and_then(|val| val.as_array()) {
@@ -385,6 +455,10 @@ fn parse_tx(
                                                         if wallets.contains_key(token_owner) {
                                                             is_wallet_found = true;
                                                             target_wallet = token_owner.to_string();
+                                                            // Get the source account for token transfers
+                                                            if let Some(source) = info.get("source").and_then(|s| s.as_str()) {
+                                                                from_address = source.to_string();
+                                                            }
                                                             break;
                                                         }
                                                     }
@@ -423,19 +497,35 @@ fn parse_tx(
                 tx_amount = json!((lamports.as_f64().unwrap_or_default() / 1_000_000_000.0));
                 tx_token = "SOL".to_string();
                 tx_mint = json!(SOL_MINT);
+                // Get the source account for SOL transfers
+                if let Some(source) = obj.get("info").and_then(|data| data.get("source")).and_then(|s| s.as_str()) {
+                    from_address = source.to_string();
+                }
             }
             _ => return,
         };
     }
 
+    // If we still don't have a from_address, try to get it from the account keys
+    if from_address.is_empty() {
+        if let Some(account_keys) = meta.get("accountKeys").and_then(|val| val.as_array()) {
+            if let Some(first_account) = account_keys.first() {
+                if let Some(pubkey) = first_account.get("pubkey").and_then(|p| p.as_str()) {
+                    from_address = pubkey.to_string();
+                }
+            }
+        }
+    }
+
     let p = ParsedTransaction::new(
-        tx_blocktime,
-        target_wallet,
-        tx_token,
-        tx_mint.as_str().unwrap().to_string(),
-        tx_amount.to_string(),
         tx_signatures.first().unwrap().to_string(),
-        false,
+        target_wallet,
+        from_address,
+        tx_amount.to_string(),
+        tx_token.clone(),
+        "SOL".to_string(),
+        tx_blocktime,
+        trigger_api_token.to_string(),
     );
 
     res.push(p);

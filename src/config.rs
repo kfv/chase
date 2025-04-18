@@ -8,6 +8,7 @@ pub struct Config {
     pub sol_wss_endpoint: String,
     pub tokens_file: String,
     pub trigger_endpoint: String,
+    pub trigger_api_token: String,
     pub wallets_file: String,
 }
 
@@ -17,6 +18,7 @@ impl Config {
         let sol_wss_endpoint = env::var("SOL_WSS_ENDPOINT")?;
         let tokens_file = env::var("TOKENS_FILE")?;
         let trigger_endpoint = env::var("TRIGGER_ENDPOINT")?;
+        let trigger_api_token = env::var("TRIGGER_API_TOKEN")?;
         let wallets_file = env::var("WALLETS_FILE")?;
 
         Ok(Self {
@@ -24,6 +26,7 @@ impl Config {
             sol_wss_endpoint,
             tokens_file,
             trigger_endpoint,
+            trigger_api_token,
             wallets_file,
         })
     }
