@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fs;
 use log::error;
 
+#[derive(Clone)]
 pub struct Config {
     pub sol_rpc_endpoint: String,
     pub sol_wss_endpoint: String,
@@ -10,6 +11,9 @@ pub struct Config {
     pub trigger_endpoint: String,
     pub trigger_api_token: String,
     pub wallets_file: String,
+    pub import_tokens_endpoint: String,
+    pub import_wallets_endpoint: String,
+    pub import_interval_seconds: u64,
 }
 
 impl Config {
@@ -20,6 +24,11 @@ impl Config {
         let trigger_endpoint = env::var("TRIGGER_ENDPOINT")?;
         let trigger_api_token = env::var("TRIGGER_API_TOKEN")?;
         let wallets_file = env::var("WALLETS_FILE")?;
+        let import_tokens_endpoint = env::var("IMPORT_TOKENS_ENDPOINT").unwrap_or_else(|_| "https://api.ompfinex.com/internal/v1/supported-tokens?networkId=".to_string());
+        let import_wallets_endpoint = env::var("IMPORT_WALLETS_ENDPOINT").unwrap_or_else(|_| "https://api.ompfinex.com/internal/v1/supported-wallets?networkId=".to_string());
+        let import_interval_seconds = env::var("IMPORT_INTERVAL_SECONDS")
+            .map(|s| s.parse().unwrap_or(3600))
+            .unwrap_or(3600);
 
         Ok(Self {
             sol_rpc_endpoint,
@@ -28,6 +37,9 @@ impl Config {
             trigger_endpoint,
             trigger_api_token,
             wallets_file,
+            import_tokens_endpoint,
+            import_wallets_endpoint,
+            import_interval_seconds,
         })
     }
 }

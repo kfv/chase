@@ -33,6 +33,9 @@ ENV TRIGGER_ENDPOINT=""
 ENV TRIGGER_API_TOKEN=""
 ENV SOL_RPC_ENDPOINT=""
 ENV SOL_WSS_ENDPOINT=""
+ENV IMPORT_TOKENS_ENDPOINT="https://api.example.com/api/v1/tokens?network=SOL"
+ENV IMPORT_WALLETS_ENDPOINT="https://api.example.com/api/v1/wallets?network=SOL"
+ENV IMPORT_INTERVAL_SECONDS="3600"
 
 # Run the binary
 CMD ["app"]
